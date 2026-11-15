@@ -34,5 +34,13 @@ Voice input needs either `localhost` or HTTPS, and microphone permission.
 ## USDA API key (optional)
 Without a key the app uses `DEMO_KEY`, which allows only about 30 lookups per hour. A free personal key takes a minute to get at https://fdc.nal.usda.gov/api-key-signup. Paste it into **Settings**.
 
-## Data
-Everything is stored in the browser (localStorage). To move it to another device, use Settings → Export / Import. Cloud sync with Supabase is not built yet.
+## Data & cloud sync (Supabase)
+- The app works without an account; data then lives only in that browser.
+- Sign in (Settings or the cloud pill in the top bar) and your log, goals, custom foods and USDA key are saved to Supabase and synced across devices.
+- Changes are saved locally first, so the app stays instant and works offline; pending changes upload when you're back online.
+- Tables `entries` and `user_state` use Row Level Security, so each account can only read and write its own rows.
+- The Supabase URL and publishable key are in `src/lib/sync.ts`. They are public by design. Override them with `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` if needed.
+
+## Hosting on GitHub Pages
+`.github/workflows/deploy.yml` builds and deploys on every push to `main`. It needs a one-time setup: **Settings → Pages → Source: GitHub Actions**.
+The site is then at https://jaswanth-akireddy.github.io/fityo/

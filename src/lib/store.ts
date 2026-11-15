@@ -71,8 +71,14 @@ function load(): State {
 let state: State = load()
 const listeners = new Set<() => void>()
 
-function commit(next: State) {
+export interface Change { entries?: string[]; state?: boolean }
+let changeHook: ((c: Change) => void) | null = null
+/** The sync layer registers here to hear about every local change. */
+export const onLocalChange = (fn: (c: Change) => void) => { changeHook = fn }
+
+function commit(next: State, change?: Change) {
   state = next
+  if (change) changeHook?.(change)
   try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* storage full / private mode */ }
   listeners.forEach((l) => l())
 }
@@ -88,38 +94,52 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 export const actions = {
   addEntries(items: Omit<Entry, 'id' | 'createdAt'>[]) {
     const now = Date.now()
-    commit({ ...state, entries: [...state.entries, ...items.map((e, i) => ({ ...e, id: uid(), createdAt: now + i }))] })
+    const added = items.map((e, i) => ({ ...e, id: uid(), createdAt: now + i }))
+    commit({ ...state, entries: [...state.entries, ...added] }, { entries: added.map((e) => e.id) })
   },
   updateEntry(id: string, patch: Partial<Entry>) {
-    commit({ ...state, entries: state.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) })
+    commit({ ...state, entries: state.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) }, { entries: [id] })
   },
   removeEntry(id: string) {
-    commit({ ...state, entries: state.entries.filter((e) => e.id !== id) })
+    commit({ ...state, entries: state.entries.filter((e) => e.id !== id) }, { entries: [id] })
   },
   setWeekGoal(weekStart: string, kcal: number | null) {
     const weekGoals = { ...state.weekGoals }
     if (kcal == null) delete weekGoals[weekStart]
     else weekGoals[weekStart] = kcal
-    commit({ ...state, weekGoals })
+    commit({ ...state, weekGoals }, { state: true })
   },
   updateSettings(patch: Partial<Settings>) {
-    commit({ ...state, settings: { ...state.settings, ...patch } })
+    commit({ ...state, settings: { ...state.settings, ...patch } }, { state: true })
   },
   addCustomFood(food: Food) {
-    commit({ ...state, customFoods: [food, ...state.customFoods.filter((f) => f.id !== food.id)] })
+    commit({ ...state, customFoods: [food, ...state.customFoods.filter((f) => f.id !== food.id)] }, { state: true })
   },
   removeCustomFood(id: string) {
-    commit({ ...state, customFoods: state.customFoods.filter((f) => f.id !== id) })
+    commit({ ...state, customFoods: state.customFoods.filter((f) => f.id !== id) }, { state: true })
   },
+  /** Import a backup: replaces local data and syncs the difference. */
   replaceAll(next: State) {
-    commit({ ...DEFAULT, ...next, settings: { ...DEFAULT.settings, ...next.settings } })
+    const ids = new Set([...state.entries, ...(next.entries ?? [])].map((e) => e.id))
+    commit({ ...DEFAULT, ...next, settings: { ...DEFAULT.settings, ...next.settings } }, { entries: [...ids], state: true })
   },
+  /** Delete everything (also from the cloud when signed in). Keeps the USDA key. */
   reset() {
+    const ids = state.entries.map((e) => e.id)
+    commit({ ...DEFAULT, settings: { ...DEFAULT.settings, usdaKey: state.settings.usdaKey } }, { entries: ids, state: true })
+  },
+  /** Replace local data with data pulled from the cloud — not reported as a change. */
+  hydrate(next: State) {
+    commit(next)
+  },
+  /** Wipe local data without syncing (used on sign-out). */
+  clearLocal() {
     commit(DEFAULT)
   },
 }
 
 export const getState = () => state
+export const DEFAULT_STATE = DEFAULT
 
 // ── Date helpers (local time) ──
 export const toISO = (d: Date) =>

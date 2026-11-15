@@ -18,6 +18,10 @@ const P: Record<string, string> = {
   flame: 'M12 22c4 0 7-3 7-7 0-3-2-6-4-8 0 3-2 4-3 4 0-3-1-6-4-9 0 4-5 7-5 12 0 5 4 8 9 8z',
   target: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   chevron: 'M6 9l6 6 6-6',
+  cloud: 'M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z',
+  cloudOff: 'M2 2l20 20M5.8 5.8A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.3-.2M22 15.3A4.5 4.5 0 0 0 17.5 10h-1.8A7 7 0 0 0 10 5.1',
+  refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
+  user: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
 }
 
 export function Icon({ name, size = 18, stroke = 2 }: { name: keyof typeof P | string; size?: number; stroke?: number }) {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { actions, getState, mifflinTDEE, useStore, type Profile, type State } from '../lib/store'
+import { AccountPanel } from './Account'
 import { Icon } from './Icon'
 
 const ACTIVITY = [
@@ -45,7 +46,12 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
   return (
     <div className="stack">
       <h1 className="h1">Settings</h1>
-      <div className="grid grid-2">
+      <div className="grid grid-2" style={{ alignItems: 'start' }}>
+        <div className="card stack" style={{ gap: 14 }}>
+          <div className="card-title" style={{ margin: 0 }}><Icon name="cloud" size={15} /> Account & cloud backup</div>
+          <AccountPanel toast={toast} />
+        </div>
+
         <div className="card stack" style={{ gap: 14 }}>
           <div className="card-title" style={{ margin: 0 }}><Icon name="target" size={15} /> Goals</div>
           <label className="field">Daily calorie goal (what you aim to eat)
@@ -101,7 +107,7 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
             <input className="input" value={settings.usdaKey} placeholder="Using DEMO_KEY (limited to ~30 searches/hour)" onChange={(e) => actions.updateSettings({ usdaKey: e.target.value.trim() })} />
           </label>
           <div className="tiny muted">
-            Common foods (incl. Indian dishes) are built in and work offline. Anything else is looked up in USDA. Get a free key in a minute at{' '}
+            Common foods (incl. Indian dishes) are built in and work offline. Anything else is looked up in USDA. When signed in, your key syncs to your other devices. Get a free key in a minute at{' '}
             <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noreferrer">fdc.nal.usda.gov</a>.
           </div>
         </div>
@@ -144,11 +150,11 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
 
         <div className="card stack" style={{ gap: 12 }}>
           <div className="card-title" style={{ margin: 0 }}>Your data</div>
-          <div className="small muted">Everything is stored in this browser. Export a backup to move it to another device.</div>
+          <div className="small muted">Signed in, your log is saved to the cloud automatically. You can also download a JSON copy.</div>
           <div className="row wrap">
             <button className="btn" onClick={exportData}>Export backup</button>
             <label className="btn">Import backup<input type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} /></label>
-            <button className="btn btn-danger" onClick={() => { if (confirm('Delete ALL your logged food and settings?')) { actions.reset(); toast('All data cleared') } }}>Clear all</button>
+            <button className="btn btn-danger" onClick={() => { if (confirm('Delete ALL your logged food and settings? If you are signed in this also deletes it from the cloud.')) { actions.reset(); toast('All data cleared') } }}>Clear all</button>
           </div>
         </div>
       </div>

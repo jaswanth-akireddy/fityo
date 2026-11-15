@@ -1,7 +1,8 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
+// Relative base so the build works both at / (local) and at /fityo/ (GitHub Pages).
 export default defineConfig({
+  base: './',
   plugins: [react()],
 })

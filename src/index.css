@@ -250,3 +250,7 @@ a { color: var(--cyan); }
 @media (max-width: 720px) {
   .ring-wrap { transform: scale(.85); margin: -14px auto -10px; }
 }
+
+.avatar { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--grad); color: #07090d; flex: none; }
+.sync-pill { font-weight: 600; }
+@media (max-width: 420px) { .sync-label { display: none; } }
