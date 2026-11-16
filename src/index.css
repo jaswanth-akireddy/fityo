@@ -266,3 +266,6 @@ a { color: var(--cyan); }
 .bar.mini > div { height: 100%; border-radius: 99px; }
 .cell-good { color: var(--green) !important; }
 .cell-bad { color: var(--red) !important; }
+.quick-grid { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 8px; }
+@media (max-width: 560px) { .quick-grid { grid-template-columns: repeat(4, 1fr); } .quick-kcal { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .hide-sm { display: none; } }

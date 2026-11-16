@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Food } from '../lib/foods'
-import { macrosFor, per100Of } from '../lib/nutrition'
+import { isQuick, macrosFor, per100Of, quickFood } from '../lib/nutrition'
 import { resolveGrams, UNIT_OPTIONS } from '../lib/parser'
 import { actions, MEALS, type Meal } from '../lib/store'
 import { FoodPicker } from './FoodPicker'
@@ -16,7 +16,13 @@ export interface Draft {
   options: Food[]
   status: 'ok' | 'searching' | 'notfound'
   msg?: string
+  quick?: boolean // calories typed in directly instead of a food from the database
 }
+
+export const quickDraft = (name = '', kcal = 0, said = 'Custom calories'): Draft => ({
+  key: Math.random().toString(36).slice(2), said, query: name, qty: null, unit: null,
+  food: quickFood(name, kcal), options: [], status: 'ok', quick: true,
+})
 
 export const draftGrams = (d: Draft) => (d.food ? Math.round(resolveGrams(d.food, d.qty, d.unit)) : 0)
 
@@ -39,7 +45,7 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
     setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)))
   const remove = (key: string) => setDrafts((ds) => ds.filter((d) => d.key !== key))
 
-  const ready = drafts.filter((d) => d.food)
+  const ready = drafts.filter((d) => d.food && (!d.quick || d.food.kcal > 0))
   const total = ready.reduce((a, d) => a + macrosFor(d.food!, draftGrams(d)).kcal, 0)
 
   function logAll() {
@@ -79,8 +85,16 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
               <div key={d.key} className={`draft ${!d.food && d.status !== 'searching' ? 'bad' : ''}`}>
                 <div className="row between">
                   <div className="grow">
-                    <div className="tiny muted">You said: “{d.said}”</div>
-                    {d.status === 'searching' ? (
+                    <div className="tiny muted">{d.quick ? 'Custom calories' : <>You said: “{d.said}”</>}</div>
+                    {d.quick ? (
+                      <input
+                        className="input"
+                        style={{ marginTop: 6 }}
+                        placeholder="Name (optional), e.g. Office lunch"
+                        value={d.food!.name === 'Quick add' ? '' : d.food!.name}
+                        onChange={(e) => update(d.key, { food: { ...quickFood(e.target.value, d.food!.kcal, d.food!) } })}
+                      />
+                    ) : d.status === 'searching' ? (
                       <div className="row small" style={{ marginTop: 4 }}><span className="wave"><i /><i /><i /></span> Looking up “{d.query}” in USDA…</div>
                     ) : (
                       <button className="draft-food" onClick={() => setPicking(picking === d.key ? null : d.key)}>
@@ -102,7 +116,9 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
                   />
                 )}
 
-                {d.food && (
+                {d.quick && d.food && <QuickFields food={d.food} onChange={(food) => update(d.key, { food })} />}
+
+                {d.food && !d.quick && (
                   <div className="amount">
                     <input
                       className="input num"
@@ -135,13 +151,16 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
               <FoodPicker
                 autoFocus
                 onPick={(food) => {
-                  setDrafts((ds) => [...ds, { key: Math.random().toString(36), said: food.name, query: food.name, qty: null, unit: null, food, options: [], status: 'ok' }])
+                  setDrafts((ds) => [...ds, { key: Math.random().toString(36), said: food.name, query: food.name, qty: null, unit: null, food, options: [], status: 'ok', quick: isQuick(food.id) }])
                   setAdding(false)
                 }}
               />
             </div>
           ) : (
-            <button className="btn btn-ghost" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Add another food</button>
+            <div className="row" style={{ justifyContent: 'center' }}>
+              <button className="btn btn-ghost" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Add another food</button>
+              <button className="btn btn-ghost" onClick={() => setDrafts((ds) => [...ds, quickDraft()])}><Icon name="flame" size={16} /> Custom calories</button>
+            </div>
           )}
         </div>
 
@@ -155,6 +174,23 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** Calorie + optional macro inputs for a custom-calories draft. */
+function QuickFields({ food, onChange }: { food: Food; onChange: (f: Food) => void }) {
+  const set = (k: 'kcal' | 'p' | 'c' | 'f' | 'fib', v: string) => onChange({ ...food, [k]: Math.max(0, +v || 0) })
+  const val = (n: number) => (n ? String(n) : '')
+  return (
+    <div className="quick-grid">
+      <label className="field quick-kcal">Calories
+        <input className="input num" type="number" inputMode="decimal" autoFocus={!food.kcal} placeholder="e.g. 650" value={val(food.kcal)} onChange={(e) => set('kcal', e.target.value)} />
+      </label>
+      <label className="field">Protein g<input className="input num" type="number" inputMode="decimal" placeholder="–" value={val(food.p)} onChange={(e) => set('p', e.target.value)} /></label>
+      <label className="field">Carbs g<input className="input num" type="number" inputMode="decimal" placeholder="–" value={val(food.c)} onChange={(e) => set('c', e.target.value)} /></label>
+      <label className="field">Fat g<input className="input num" type="number" inputMode="decimal" placeholder="–" value={val(food.f)} onChange={(e) => set('f', e.target.value)} /></label>
+      <label className="field">Fiber g<input className="input num" type="number" inputMode="decimal" placeholder="–" value={val(food.fib)} onChange={(e) => set('fib', e.target.value)} /></label>
     </div>
   )
 }

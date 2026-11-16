@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { Food } from '../lib/foods'
-import { allFoods, bestMatch, macrosFor, searchUSDA } from '../lib/nutrition'
+import { allFoods, bestMatch, isQuick, macrosFor, quickFood, searchUSDA } from '../lib/nutrition'
 import { describeAmount, detectMeal, parseFoodText } from '../lib/parser'
 import { speechSupported, useSpeech } from '../lib/speech'
 import { actions, addDays, fromISO, goalsOf, MEALS, sumEntries, today, useStore, type Entry, type Meal, type Totals } from '../lib/store'
 import { FoodPicker } from './FoodPicker'
 import { Icon } from './Icon'
-import { ReviewSheet, type Draft } from './ReviewSheet'
+import { quickDraft, ReviewSheet, type Draft } from './ReviewSheet'
 
 const guessMeal = (): Meal => {
   const h = new Date().getHours()
@@ -57,6 +57,7 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
     if (m) setMeal(m)
     const pool = allFoods(customFoods)
     const list: Draft[] = items.map((it, i) => {
+      if (it.unit === 'kcal') return { ...quickDraft(it.text, it.qty ?? 0, `${it.qty} kcal ${it.text}`.trim()), key: `${Date.now()}-${i}` }
       const food = bestMatch(it.text, pool)
       return {
         key: `${Date.now()}-${i}`,
@@ -82,7 +83,7 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
   const speech = useSpeech(settings.speechLang, interpret)
 
   function quickAdd(food: Food, label = food.name) {
-    openDrafts([{ key: String(Date.now()), said: label, query: food.name, qty: null, unit: null, food, options: [], status: 'ok' }], '')
+    openDrafts([{ key: String(Date.now()), said: label, query: food.name, qty: null, unit: null, food, options: [], status: 'ok', quick: isQuick(food.id) }], '')
     setShowSearch(false)
   }
 
@@ -149,14 +150,15 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
           <form className="compose" onSubmit={(e) => { e.preventDefault(); if (text.trim()) interpret(text) }}>
             <input className="input" value={text} onChange={(e) => setText(e.target.value)} placeholder="…or type it: 2 rotis, 1 bowl dal, 150g paneer" />
             <button className="btn btn-primary" type="submit" disabled={!text.trim()}><Icon name="send" size={16} /></button>
-            <button className="btn" type="button" onClick={() => setShowSearch((s) => !s)} title="Search foods"><Icon name="search" size={16} /></button>
+            <button className="btn" type="button" onClick={() => setShowSearch((s) => !s)} title="Search foods" aria-label="Search foods"><Icon name="search" size={16} /></button>
+            <button className="btn" type="button" onClick={() => openDrafts([quickDraft()], '')} title="Add custom calories" aria-label="Add custom calories"><Icon name="flame" size={16} /><span className="hide-sm">kcal</span></button>
           </form>
           {showSearch && <div style={{ marginTop: 14 }}><FoodPicker autoFocus onPick={(f) => quickAdd(f)} /></div>}
           {recent.length > 0 && !showSearch && (
             <div className="row wrap" style={{ marginTop: 14, gap: 6 }}>
               <span className="tiny muted" style={{ marginRight: 2 }}>Recent</span>
               {recent.map((e) => {
-                const food: Food = { id: e.foodId, name: e.name, aliases: [], fib: 0, sug: 0, na: 0, ...e.per100 }
+                const food: Food = isQuick(e.foodId) ? quickFood(e.name, e.kcal, e) : { id: e.foodId, name: e.name, aliases: [], fib: 0, sug: 0, na: 0, ...e.per100 }
                 const pool = allFoods(customFoods).find((f) => f.id === e.foodId)
                 return (
                   <button key={e.id} className="chip" onClick={() => quickAdd(pool ?? food)}>
@@ -207,10 +209,13 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
 
 function EntryRow({ e }: { e: Entry }) {
   const [editing, setEditing] = useState(false)
-  const [grams, setGrams] = useState(String(e.grams))
+  const quick = isQuick(e.foodId)
+  // Custom-calorie entries are edited by calories; foods by grams.
+  const [amount, setAmount] = useState(String(quick ? e.kcal : e.grams))
   const save = () => {
-    const g = Math.max(0, +grams || 0)
-    actions.updateEntry(e.id, { grams: g, ...macrosFor(e.per100, g) })
+    const v = Math.max(0, +amount || 0)
+    if (quick) actions.updateEntry(e.id, { kcal: Math.round(v), per100: { ...e.per100, kcal: Math.round(v) } })
+    else actions.updateEntry(e.id, { grams: v, ...macrosFor(e.per100, v) })
     setEditing(false)
   }
   return (
@@ -219,18 +224,18 @@ function EntryRow({ e }: { e: Entry }) {
         <div className="name">{e.name}</div>
         {editing ? (
           <form className="row" style={{ marginTop: 6 }} onSubmit={(ev) => { ev.preventDefault(); save() }}>
-            <input className="input num" style={{ width: 100, padding: '6px 10px' }} type="number" value={grams} autoFocus onChange={(ev) => setGrams(ev.target.value)} />
-            <span className="tiny muted">g</span>
+            <input className="input num" style={{ width: 100, padding: '6px 10px' }} type="number" value={amount} autoFocus onChange={(ev) => setAmount(ev.target.value)} />
+            <span className="tiny muted">{quick ? 'kcal' : 'g'}</span>
             <button className="btn btn-sm btn-primary" type="submit">Save</button>
             <button className="btn btn-sm btn-ghost" type="button" onClick={() => setEditing(false)}>Cancel</button>
           </form>
         ) : (
-          <div className="meta">{e.grams} g · P {Math.round(e.p)} · C {Math.round(e.c)} · F {Math.round(e.f)} · Fiber {Math.round(e.fib ?? 0)}</div>
+          <div className="meta">{quick ? <span className="badge" style={{ marginRight: 4 }}>custom</span> : `${e.grams} g · `}P {Math.round(e.p)} · C {Math.round(e.c)} · F {Math.round(e.f)} · Fiber {Math.round(e.fib ?? 0)}</div>
         )}
       </div>
       {!editing && (
         <div className="actions">
-          <button className="btn btn-ghost icon-btn" onClick={() => setEditing(true)} aria-label="Edit amount"><Icon name="edit" size={15} /></button>
+          <button className="btn btn-ghost icon-btn" onClick={() => { setAmount(String(quick ? e.kcal : e.grams)); setEditing(true) }} aria-label="Edit amount"><Icon name="edit" size={15} /></button>
           <button className="btn btn-ghost icon-btn btn-danger" onClick={() => actions.removeEntry(e.id)} aria-label="Delete"><Icon name="trash" size={15} /></button>
         </div>
       )}

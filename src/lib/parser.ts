@@ -64,6 +64,7 @@ function preprocess(text: string) {
     .toLowerCase()
     .replace(/(\d),(\d{3})/g, '$1$2') // 1,000 → 1000
     .replace(/(\d)\s*(g|gm|gms|kg|ml|l|oz)\b/g, '$1 $2') // 200g → 200 g
+    .replace(/(\d)(k?cals?|kcal)\b/g, '$1 $2') // 650kcal → 650 kcal
     .replace(/\b(\w+) and a half\b/g, (m, w) => { const n = wordToNumber(w); return n != null ? String(n + 0.5) : m })
     .replace(/\bhalf (?:a|an)\b/g, 'half')
     .replace(/\b(\w+) hundred\b/g, (m, w) => { const n = wordToNumber(w); return n != null && n < 10 ? String(n * 100) : m })
@@ -74,6 +75,12 @@ function parseSegment(seg: string): ParsedItem | null {
   const raw = seg.trim()
   let s = raw.replace(FILLER, ' ').replace(/\s+/g, ' ').trim()
   if (!s) return null
+  // "650 calories", "a 650 kcal burger", "office lunch 900 cal" → calories entered directly
+  const kc = s.match(/(\d+(?:\.\d+)?)\s*(?:k?cals?|kilo ?calories?|calories?)\b/)
+  if (kc) {
+    const text = s.replace(kc[0], ' ').replace(/\b(of|worth|about|around)\b/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(?:(?:had|ate|drank|having|eaten|a|an|the|one)\s+)+/, '')
+    return { qty: parseFloat(kc[1]), unit: 'kcal', text, raw }
+  }
   let words = s.split(' ')
   let qty: number | null = null
   let unit: string | null = null
@@ -126,6 +133,7 @@ export function resolveGrams(food: Food, qty: number | null, unit: string | null
 /** Best guess of how to show the amount back to the user. */
 export function describeAmount(qty: number | null, unit: string | null) {
   if (unit === 'g' || unit === 'ml') return `${qty}${unit}`
+  if (unit === 'kcal') return `${qty} kcal`
   if (unit) return `${qty ?? 1} ${unit}${(qty ?? 1) > 1 ? 's' : ''}`
   if (qty != null) return `× ${qty}`
   return '1 serving'

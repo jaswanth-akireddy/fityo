@@ -134,3 +134,13 @@ export function macrosFor(food: Per100, grams: number) {
 }
 
 export const per100Of = (f: Food) => ({ kcal: f.kcal, p: f.p, c: f.c, f: f.f, fib: f.fib, sug: f.sug, na: f.na })
+
+/** A one-off "food" for calories entered directly. Values are totals, stored as per-100 g with 100 g eaten. */
+export function quickFood(name: string, kcal: number, m: { p?: number; c?: number; f?: number; fib?: number } = {}): Food {
+  const n = name.trim() || 'Quick add'
+  return {
+    id: 'quick:' + (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'kcal'),
+    name: n, aliases: [], kcal: Math.round(kcal), p: m.p ?? 0, c: m.c ?? 0, f: m.f ?? 0, fib: m.fib ?? 0, sug: 0, na: 0,
+  }
+}
+export const isQuick = (id: string) => id.startsWith('quick:')

@@ -5,6 +5,7 @@ A fast, good-looking calorie tracker. Say *"I had 200 grams of chicken, 200 gram
 ## Features
 - **Voice logging** uses the browser's speech recognition (Chrome, Edge, Safari). It understands grams, kg, ml, cups, bowls/katoris, plates, slices, spoons and counts ("2 rotis", "a banana", "one and a half cup milk"). It also picks up the meal from "for lunch…".
 - **You can also type** the same sentence, or search for a food and add it.
+- **Custom calories:** the flame button logs calories directly (optional name, protein, carbs, fat, fiber). Saying or typing "office lunch 900 calories" works too.
 - **Food data:** about 130 common foods are built in, including many Indian dishes (dal, roti, idli, dosa, biryani, paneer…), and work offline. Anything else is looked up in the [USDA FoodData Central](https://fdc.nal.usda.gov/) API, which has 300k+ foods (generic and branded).
 - **Review step** before saving. You can change any match, amount or unit.
 - **Today view:** a calorie ring, protein/carbs/fat bars, and meals grouped as breakfast / lunch / snacks / dinner. You can edit or delete any entry.
