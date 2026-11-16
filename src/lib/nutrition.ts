@@ -106,6 +106,9 @@ export async function searchUSDA(query: string, apiKey: string, branded = false)
         p: +nutrient(f, [1003], ['203']).toFixed(1),
         c: +nutrient(f, [1005], ['205']).toFixed(1),
         f: +nutrient(f, [1004], ['204']).toFixed(1),
+        fib: +nutrient(f, [1079], ['291']).toFixed(1),
+        sug: +nutrient(f, [2000, 1063], ['269', '269.3']).toFixed(1),
+        na: Math.round(nutrient(f, [1093], ['307'])),
         units: Object.keys(units).length ? units : undefined,
       }
     })
@@ -114,12 +117,20 @@ export async function searchUSDA(query: string, apiKey: string, branded = false)
   return foods
 }
 
-export function macrosFor(food: Food, grams: number) {
+type Per100 = Pick<Food, 'kcal' | 'p' | 'c' | 'f'> & Partial<Pick<Food, 'fib' | 'sug' | 'na'>>
+
+/** Nutrients for `grams` of a food (values are stored per 100 g). */
+export function macrosFor(food: Per100, grams: number) {
   const k = grams / 100
   return {
     kcal: Math.round(food.kcal * k),
     p: +(food.p * k).toFixed(1),
     c: +(food.c * k).toFixed(1),
     f: +(food.f * k).toFixed(1),
+    fib: +((food.fib ?? 0) * k).toFixed(1),
+    sug: +((food.sug ?? 0) * k).toFixed(1),
+    na: Math.round((food.na ?? 0) * k),
   }
 }
+
+export const per100Of = (f: Food) => ({ kcal: f.kcal, p: f.p, c: f.c, f: f.f, fib: f.fib, sug: f.sug, na: f.na })

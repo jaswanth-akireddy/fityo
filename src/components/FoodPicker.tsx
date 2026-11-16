@@ -70,7 +70,7 @@ export function FoodPicker({ initialQuery = '', extra = [], onPick, autoFocus, p
             <button key={f.id} className="result" onClick={() => onPick(f)}>
               <div className="grow">
                 <div className="r-name">{f.name}</div>
-                <div className="r-meta">P {f.p}g · C {f.c}g · F {f.f}g per 100 g</div>
+                <div className="r-meta">P {f.p}g · C {f.c}g · F {f.f}g · Fiber {f.fib ?? 0}g per 100 g</div>
               </div>
               <div className="row">
                 {f.id.startsWith('usda:') && <span className="badge usda">USDA</span>}

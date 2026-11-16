@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { actions, addDays, fromISO, sumEntries, today, useStore, weekDays, weekStart, type Entry } from '../lib/store'
+import { actions, addDays, fromISO, goalsOf, NUTRIENTS, sumEntries, today, useStore, weekDays, weekStart, type Entry, type NutrientKey, type Totals } from '../lib/store'
 import { Icon } from './Icon'
 
 const KCAL_PER_KG_FAT = 7700
@@ -8,7 +8,7 @@ const dShort = (iso: string, o: Intl.DateTimeFormatOptions = { day: 'numeric', m
 
 export interface WeekStats {
   start: string
-  days: { date: string; kcal: number; logged: boolean }[]
+  days: { date: string; kcal: number; logged: boolean; t: Totals }[]
   consumed: number
   budget: number
   loggedDays: number
@@ -17,7 +17,7 @@ export interface WeekStats {
   avg: number
   status: 'past' | 'current' | 'future'
   daysLeft: number
-  protein: number
+  avgs: Totals // per logged day
 }
 
 export function computeWeek(start: string, entries: Entry[], weekGoals: Record<string, number>, dailyGoal: number, maintenance: number): WeekStats {
@@ -25,7 +25,8 @@ export function computeWeek(start: string, entries: Entry[], weekGoals: Record<s
   const end = addDays(start, 6)
   const byDay = weekDays(start).map((date) => {
     const list = entries.filter((e) => e.date === date)
-    return { date, kcal: sumEntries(list).kcal, p: sumEntries(list).p, logged: list.length > 0 }
+    const t = sumEntries(list)
+    return { date, kcal: t.kcal, t, logged: list.length > 0 }
   })
   const consumed = byDay.reduce((a, d) => a + d.kcal, 0)
   const loggedDays = byDay.filter((d) => d.logged).length
@@ -42,7 +43,9 @@ export function computeWeek(start: string, entries: Entry[], weekGoals: Record<s
     avg: loggedDays ? consumed / loggedDays : 0,
     status,
     daysLeft: status === 'current' ? byDay.filter((d) => d.date >= t).length : status === 'future' ? 7 : 0,
-    protein: loggedDays ? byDay.reduce((a, d) => a + d.p, 0) / loggedDays : 0,
+    avgs: Object.fromEntries(
+      NUTRIENTS.map((n) => [n.key, loggedDays ? byDay.reduce((a, d) => a + d.t[n.key], 0) / loggedDays : 0]),
+    ) as Totals,
   }
 }
 
@@ -51,6 +54,9 @@ export function Week({ date, setDate, goToDay }: { date: string; setDate: (d: st
   const start = weekStart(date)
   const w = useMemo(() => computeWeek(start, entries, weekGoals, settings.dailyGoal, settings.maintenance), [start, entries, weekGoals, settings])
   const [goalInput, setGoalInput] = useState<string | null>(null)
+  const [metric, setMetric] = useState<NutrientKey>('kcal')
+  const meta = NUTRIENTS.find((n) => n.key === metric)!
+  const goals = goalsOf(settings)
 
   const history = useMemo(() => {
     if (!entries.length) return []
@@ -148,15 +154,28 @@ export function Week({ date, setDate, goToDay }: { date: string; setDate: (d: st
       </div>
 
       <div className="card">
-        <div className="row between" style={{ marginBottom: 6 }}>
-          <div className="card-title" style={{ margin: 0 }}>Daily calories</div>
+        <div className="row between wrap" style={{ marginBottom: 10, gap: 10 }}>
+          <div className="seg">
+            {NUTRIENTS.map((n) => <button key={n.key} className={metric === n.key ? 'on' : ''} onClick={() => setMetric(n.key)}>{n.label}</button>)}
+          </div>
           <div className="row tiny muted" style={{ gap: 14 }}>
-            <span className="row" style={{ gap: 6 }}><svg width="18" height="4"><line x1="0" y1="2" x2="18" y2="2" stroke="var(--lime)" strokeWidth="2" /></svg> Daily target</span>
-            <span className="row" style={{ gap: 6 }}><svg width="18" height="4"><line x1="0" y1="2" x2="18" y2="2" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="4 3" /></svg> Maintenance</span>
+            <span className="row" style={{ gap: 6 }}><svg width="18" height="4"><line x1="0" y1="2" x2="18" y2="2" stroke={meta.limit ? 'var(--red)' : 'var(--lime)'} strokeWidth="2" /></svg> {metric === 'kcal' ? 'Daily target' : meta.limit ? 'Daily limit' : 'Daily goal'}</span>
+            {metric === 'kcal' && <span className="row" style={{ gap: 6 }}><svg width="18" height="4"><line x1="0" y1="2" x2="18" y2="2" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="4 3" /></svg> Maintenance</span>}
           </div>
         </div>
-        <BarChart days={w.days} target={w.budget / 7} maintenance={settings.maintenance} onPick={goToDay} />
+        <BarChart
+          days={w.days.map((d) => ({ date: d.date, v: d.t[metric], logged: d.logged }))}
+          target={metric === 'kcal' ? w.budget / 7 : goals[metric]}
+          maintenance={metric === 'kcal' ? settings.maintenance : undefined}
+          unit={meta.unit}
+          color={meta.color}
+          kind={metric === 'kcal' ? 'kcal' : meta.limit ? 'limit' : 'goal'}
+          onPick={goToDay}
+        />
       </div>
+
+      <NutrientAverages w={w} goals={goals} />
+      <DayTable w={w} goals={goals} onPick={goToDay} />
 
       {history.length > 0 && (
         <div className="card">
@@ -240,21 +259,35 @@ function Stat({ label, value, hint, color }: { label: string; value: string; hin
   )
 }
 
-function BarChart({ days, target, maintenance, onPick }: { days: WeekStats['days']; target: number; maintenance: number; onPick: (d: string) => void }) {
+interface ChartDay { date: string; v: number; logged: boolean }
+type ChartKind = 'kcal' | 'goal' | 'limit'
+
+const niceStep = (max: number) => {
+  const raw = max / 5
+  const pow = 10 ** Math.floor(Math.log10(raw || 1))
+  return [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => s >= raw) ?? pow * 10
+}
+
+function BarChart({ days, target, maintenance, unit, color, kind, onPick }: {
+  days: ChartDay[]; target: number; maintenance?: number; unit: string; color: string; kind: ChartKind; onPick: (d: string) => void
+}) {
   const [hover, setHover] = useState<number | null>(null)
-  const W = 700, H = 260, padL = 44, padR = 8, padT = 16, padB = 34
-  const max = Math.max(maintenance, target, ...days.map((d) => d.kcal)) * 1.12 || 1
-  const step = max > 4000 ? 1000 : 500
+  const W = 700, H = 260, padL = 48, padR = 8, padT = 16, padB = 34
+  const max = Math.max(maintenance ?? 0, target, ...days.map((d) => d.v)) * 1.12 || 1
+  const step = niceStep(max)
   const ticks = Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => i * step)
   const iw = W - padL - padR, ih = H - padT - padB
   const y = (v: number) => padT + ih - (v / max) * ih
   const bw = (iw / 7) * 0.5
   const x = (i: number) => padL + (iw / 7) * (i + 0.5)
   const t = today()
+  const tick = (v: number) => (v >= 1000 ? `${+(v / 1000).toFixed(1)}k` : String(+v.toFixed(1)))
+  const isOver = (v: number) => kind !== 'goal' && v > target
+  const hd = hover != null ? days[hover] : null
 
   return (
     <div className="chart-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Calories per day this week">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Daily ${unit} this week`}>
         <defs>
           <linearGradient id="barG" x1="0" y1="1" x2="0" y2="0">
             <stop offset="0" stopColor="#2fd6f0" />
@@ -264,43 +297,114 @@ function BarChart({ days, target, maintenance, onPick }: { days: WeekStats['days
         {ticks.map((v) => (
           <g key={v}>
             <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} stroke="rgba(255,255,255,0.06)" />
-            <text x={padL - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#6b7584">{v >= 1000 ? `${v / 1000}k` : v}</text>
+            <text x={padL - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="#6b7584">{tick(v)}</text>
           </g>
         ))}
         {days.map((d, i) => {
-          const h = Math.max(0, ih - (y(d.kcal) - padT))
-          const over = d.kcal > target
+          const h = Math.max(0, ih - (y(d.v) - padT))
           const r = Math.min(4, h / 2)
-          const x0 = x(i) - bw / 2, y0 = y(d.kcal)
+          const x0 = x(i) - bw / 2, y0 = y(d.v)
+          const fill = isOver(d.v) ? '#ffb547' : kind === 'kcal' ? 'url(#barG)' : color
           return (
             <g key={d.date} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => onPick(d.date)} style={{ cursor: 'pointer' }}>
               <rect x={x(i) - iw / 14} y={padT} width={iw / 7} height={ih} fill={hover === i ? 'rgba(255,255,255,0.04)' : 'transparent'} rx="8" />
               {h > 0 && (
                 <path
                   d={`M${x0},${padT + ih} V${y0 + r} Q${x0},${y0} ${x0 + r},${y0} H${x0 + bw - r} Q${x0 + bw},${y0} ${x0 + bw},${y0 + r} V${padT + ih} Z`}
-                  fill={over ? '#ffb547' : 'url(#barG)'}
+                  fill={fill}
                   opacity={hover == null || hover === i ? 1 : 0.55}
                 />
               )}
-              {d.logged && <text x={x(i)} y={y0 - 8} textAnchor="middle" fontSize="12" fontWeight="600" fill="#a4adbb">{fmt(d.kcal)}</text>}
+              {d.logged && <text x={x(i)} y={y0 - 8} textAnchor="middle" fontSize="12" fontWeight="600" fill="#a4adbb">{fmt(d.v)}</text>}
               <text x={x(i)} y={H - 12} textAnchor="middle" fontSize="12" fontWeight={d.date === t ? 700 : 500} fill={d.date === t ? '#eef2f7' : '#6b7584'}>
                 {fromISO(d.date).toLocaleDateString(undefined, { weekday: 'short' })}
               </text>
             </g>
           )
         })}
-        <line x1={padL} x2={W - padR} y1={y(maintenance)} y2={y(maintenance)} stroke="#a4adbb" strokeWidth="1.5" strokeDasharray="5 4" pointerEvents="none" />
-        <line x1={padL} x2={W - padR} y1={y(target)} y2={y(target)} stroke="#b5f23d" strokeWidth="2" pointerEvents="none" />
+        {maintenance != null && <line x1={padL} x2={W - padR} y1={y(maintenance)} y2={y(maintenance)} stroke="#a4adbb" strokeWidth="1.5" strokeDasharray="5 4" pointerEvents="none" />}
+        <line x1={padL} x2={W - padR} y1={y(target)} y2={y(target)} stroke={kind === 'limit' ? '#ff5d6c' : '#b5f23d'} strokeWidth="2" pointerEvents="none" />
       </svg>
-      {hover != null && (
-        <div className="tooltip" style={{ left: `${(x(hover) / W) * 100}%`, top: `${(Math.min(y(days[hover].kcal), y(target)) / H) * 100 - 4}%` }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>{dShort(days[hover].date, { weekday: 'long', day: 'numeric', month: 'short' })}</div>
-          <div><span className="num" style={{ fontWeight: 600 }}>{fmt(days[hover].kcal)}</span> kcal {days[hover].logged ? '' : '(not logged)'}</div>
+      {hd && (
+        <div className="tooltip" style={{ left: `${(x(hover!) / W) * 100}%`, top: `${(Math.min(y(hd.v), y(target)) / H) * 100 - 4}%` }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{dShort(hd.date, { weekday: 'long', day: 'numeric', month: 'short' })}</div>
+          <div><span className="num" style={{ fontWeight: 600 }}>{fmt(hd.v)}</span> {unit} {hd.logged ? '' : '(not logged)'}</div>
           <div className="muted">
-            {days[hover].kcal > target ? `${fmt(days[hover].kcal - target)} over target` : `${fmt(target - days[hover].kcal)} under target`} · click to open
+            {kind === 'goal'
+              ? hd.v >= target ? '✓ goal reached' : `${fmt(target - hd.v)} ${unit} short of goal`
+              : hd.v > target ? `${fmt(hd.v - target)} ${unit} over ${kind === 'limit' ? 'limit' : 'target'}` : `${fmt(target - hd.v)} ${unit} under ${kind === 'limit' ? 'limit' : 'target'}`}
+            {' '}· click to open
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Average per logged day for every nutrient, against the daily goal or limit. */
+function NutrientAverages({ w, goals }: { w: WeekStats; goals: ReturnType<typeof goalsOf> }) {
+  return (
+    <div className="card">
+      <div className="card-title">Daily average this week <span className="muted" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>· {w.loggedDays} logged day{w.loggedDays === 1 ? '' : 's'}</span></div>
+      <div className="nutri-grid">
+        {NUTRIENTS.map((n) => {
+          const avg = w.avgs[n.key]
+          const goal = n.key === 'kcal' ? w.budget / 7 : goals[n.key]
+          const pct = goal ? avg / goal : 0
+          const limitish = n.limit || n.key === 'kcal'
+          const status = !w.loggedDays ? null : limitish ? (pct > 1 ? 'bad' : 'good') : pct >= 0.9 ? 'good' : pct >= 0.6 ? 'warn' : 'bad'
+          return (
+            <div key={n.key} className="stat">
+              <div className="row between">
+                <span className="label row" style={{ gap: 6 }}><i className="dot" style={{ background: n.color }} />{n.label}</span>
+                {status && <span className={`badge ${status}`}>{status === 'good' ? '✓' : status === 'warn' ? 'low' : limitish ? 'over' : 'low'}</span>}
+              </div>
+              <div className="value num" style={{ fontSize: 22 }}>{fmt(avg)}<span className="small muted"> {n.unit}</span></div>
+              <div className="hint">{limitish ? (n.key === 'kcal' ? 'target' : 'limit') : 'goal'} {fmt(goal)} {n.unit}/day</div>
+              <div className="bar mini"><div style={{ width: `${Math.min(100, pct * 100)}%`, background: limitish && pct > 1 ? 'var(--red)' : n.color }} /></div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** One row per day with every nutrient. */
+function DayTable({ w, goals, onPick }: { w: WeekStats; goals: ReturnType<typeof goalsOf>; onPick: (d: string) => void }) {
+  const cls = (key: NutrientKey, v: number, logged: boolean) => {
+    if (!logged) return 'muted'
+    const n = NUTRIENTS.find((x) => x.key === key)!
+    const goal = key === 'kcal' ? w.budget / 7 : goals[key]
+    if (n.limit || key === 'kcal') return v > goal ? 'cell-bad' : ''
+    return key === 'p' || key === 'fib' ? (v >= goal ? 'cell-good' : '') : ''
+  }
+  return (
+    <div className="card">
+      <div className="card-title">Day by day</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="hist">
+          <thead>
+            <tr>
+              <th>Day</th>
+              {NUTRIENTS.map((n) => <th key={n.key} className="right">{n.label}<div className="tiny muted" style={{ fontWeight: 400 }}>{n.unit}</div></th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {w.days.map((d) => (
+              <tr key={d.date} className="clickable" onClick={() => onPick(d.date)}>
+                <td>{dShort(d.date, { weekday: 'short', day: 'numeric' })}</td>
+                {NUTRIENTS.map((n) => (
+                  <td key={n.key} className={`right num ${cls(n.key, d.t[n.key], d.logged)}`}>{d.logged ? fmt(d.t[n.key]) : '–'}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="tiny muted" style={{ marginTop: 10 }}>
+        <span className="cell-good">Green</span> = protein / fiber goal hit · <span className="cell-bad">Red</span> = over calorie target, sugar or sodium limit
+      </div>
     </div>
   )
 }

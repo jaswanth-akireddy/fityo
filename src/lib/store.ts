@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Food } from './foods'
+import { FOOD_BY_ID, type Food } from './foods'
 
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 export const MEALS: { id: Meal; label: string; emoji: string }[] = [
@@ -20,7 +20,10 @@ export interface Entry {
   p: number
   c: number
   f: number
-  per100: { kcal: number; p: number; c: number; f: number }
+  fib?: number // fiber g (missing on entries logged before it was tracked)
+  sug?: number // sugar g
+  na?: number // sodium mg
+  per100: { kcal: number; p: number; c: number; f: number; fib?: number; sug?: number; na?: number }
   createdAt: number
 }
 
@@ -36,6 +39,11 @@ export interface Settings {
   dailyGoal: number // kcal you aim to eat per day
   maintenance: number // kcal you burn per day (TDEE)
   proteinGoal: number
+  carbGoal: number // 0 = auto (45% of calories)
+  fatGoal: number // 0 = auto (28% of calories)
+  fiberGoal: number
+  sugarLimit: number
+  sodiumLimit: number // mg
   usdaKey: string
   speechLang: string
   profile: Profile | null
@@ -54,7 +62,7 @@ const DEFAULT: State = {
   entries: [],
   customFoods: [],
   weekGoals: {},
-  settings: { dailyGoal: 2000, maintenance: 2500, proteinGoal: 120, usdaKey: '', speechLang: 'en-IN', profile: null },
+  settings: { dailyGoal: 2000, maintenance: 2500, proteinGoal: 120, carbGoal: 0, fatGoal: 0, fiberGoal: 30, sugarLimit: 50, sodiumLimit: 2300, usdaKey: '', speechLang: 'en-IN', profile: null },
 }
 
 function load(): State {
@@ -69,6 +77,8 @@ function load(): State {
 }
 
 let state: State = load()
+const pendingBackfill = backfill(state.entries)
+state = { ...state, entries: pendingBackfill.entries }
 const listeners = new Set<() => void>()
 
 export interface Change { entries?: string[]; state?: boolean }
@@ -130,7 +140,12 @@ export const actions = {
   },
   /** Replace local data with data pulled from the cloud — not reported as a change. */
   hydrate(next: State) {
-    commit(next)
+    const b = backfill(next.entries)
+    commit({ ...next, entries: b.entries }, b.changed.length ? { entries: b.changed } : undefined)
+  },
+  /** Report entries that were backfilled at load time, once the sync layer is listening. */
+  flushBackfill() {
+    if (pendingBackfill.changed.length) commit(state, { entries: pendingBackfill.changed.splice(0) })
   },
   /** Wipe local data without syncing (used on sign-out). */
   clearLocal() {
@@ -155,9 +170,49 @@ export function mifflinTDEE(p: Profile) {
   return Math.round(bmr * p.activity)
 }
 
-export function sumEntries(list: Entry[]) {
+export type Totals = { kcal: number; p: number; c: number; f: number; fib: number; sug: number; na: number }
+
+export function sumEntries(list: Entry[]): Totals {
   return list.reduce(
-    (a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f }),
-    { kcal: 0, p: 0, c: 0, f: 0 },
+    (a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f, fib: a.fib + (e.fib ?? 0), sug: a.sug + (e.sug ?? 0), na: a.na + (e.na ?? 0) }),
+    { kcal: 0, p: 0, c: 0, f: 0, fib: 0, sug: 0, na: 0 },
   )
+}
+
+/** Daily targets, with carbs/fat derived from the calorie goal when set to auto. */
+export function goalsOf(s: Settings) {
+  return {
+    kcal: s.dailyGoal,
+    p: s.proteinGoal,
+    c: s.carbGoal || Math.round((s.dailyGoal * 0.45) / 4),
+    f: s.fatGoal || Math.round((s.dailyGoal * 0.28) / 9),
+    fib: s.fiberGoal,
+    sug: s.sugarLimit,
+    na: s.sodiumLimit,
+  }
+}
+
+export type NutrientKey = keyof Totals
+export const NUTRIENTS: { key: NutrientKey; label: string; unit: string; color: string; limit?: boolean }[] = [
+  { key: 'kcal', label: 'Calories', unit: 'kcal', color: 'var(--lime)' },
+  { key: 'p', label: 'Protein', unit: 'g', color: 'var(--protein)' },
+  { key: 'c', label: 'Carbs', unit: 'g', color: 'var(--carbs)' },
+  { key: 'f', label: 'Fat', unit: 'g', color: 'var(--fat)' },
+  { key: 'fib', label: 'Fiber', unit: 'g', color: 'var(--fiber)' },
+  { key: 'sug', label: 'Sugar', unit: 'g', color: 'var(--sugar)', limit: true },
+  { key: 'na', label: 'Sodium', unit: 'mg', color: 'var(--sodium)', limit: true },
+]
+
+/** Fill in fiber/sugar/sodium on entries logged before those were tracked (built-in foods only). */
+function backfill(entries: Entry[]): { entries: Entry[]; changed: string[] } {
+  const changed: string[] = []
+  const out = entries.map((e) => {
+    if (e.fib != null) return e
+    const food = FOOD_BY_ID.get(e.foodId)
+    const per100 = { ...e.per100, fib: food?.fib ?? 0, sug: food?.sug ?? 0, na: food?.na ?? 0 }
+    const k = e.grams / 100
+    changed.push(e.id)
+    return { ...e, per100, fib: +(per100.fib * k).toFixed(1), sug: +(per100.sug * k).toFixed(1), na: Math.round(per100.na * k) }
+  })
+  return { entries: changed.length ? out : entries, changed }
 }

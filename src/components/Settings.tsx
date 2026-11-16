@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { actions, getState, mifflinTDEE, useStore, type Profile, type State } from '../lib/store'
+import { actions, getState, goalsOf, mifflinTDEE, useStore, type Profile, type State } from '../lib/store'
 import { AccountPanel } from './Account'
 import { Icon } from './Icon'
 
@@ -19,7 +19,9 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
   const { settings, customFoods } = useStore()
   const [p, setP] = useState<Profile>(settings.profile ?? { sex: 'male', age: 25, heightCm: 175, weightKg: 75, activity: 1.375 })
   const tdee = mifflinTDEE(p)
-  const [cf, setCf] = useState({ name: '', kcal: '', p: '', c: '', f: '', serving: '' })
+  const EMPTY_CF = { name: '', kcal: '', p: '', c: '', f: '', fib: '', sug: '', na: '', serving: '' }
+  const [cf, setCf] = useState(EMPTY_CF)
+  const auto = goalsOf({ ...settings, carbGoal: 0, fatGoal: 0 })
 
   const num = (v: string) => Math.max(0, +v || 0)
 
@@ -60,9 +62,27 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
           <label className="field">Maintenance calories / TDEE (what you burn)
             <input className="input num" type="number" value={settings.maintenance} onChange={(e) => actions.updateSettings({ maintenance: num(e.target.value) })} />
           </label>
-          <label className="field">Daily protein goal (g)
-            <input className="input num" type="number" value={settings.proteinGoal} onChange={(e) => actions.updateSettings({ proteinGoal: num(e.target.value) })} />
-          </label>
+          <div className="grid grid-2" style={{ gap: 10 }}>
+            <label className="field">Protein goal (g)
+              <input className="input num" type="number" value={settings.proteinGoal} onChange={(e) => actions.updateSettings({ proteinGoal: num(e.target.value) })} />
+            </label>
+            <label className="field">Fiber goal (g)
+              <input className="input num" type="number" value={settings.fiberGoal} onChange={(e) => actions.updateSettings({ fiberGoal: num(e.target.value) })} />
+            </label>
+            <label className="field">Carbs goal (g)
+              <input className="input num" type="number" value={settings.carbGoal || ''} placeholder={`Auto · ${auto.c}`} onChange={(e) => actions.updateSettings({ carbGoal: num(e.target.value) })} />
+            </label>
+            <label className="field">Fat goal (g)
+              <input className="input num" type="number" value={settings.fatGoal || ''} placeholder={`Auto · ${auto.f}`} onChange={(e) => actions.updateSettings({ fatGoal: num(e.target.value) })} />
+            </label>
+            <label className="field">Sugar limit (g)
+              <input className="input num" type="number" value={settings.sugarLimit} onChange={(e) => actions.updateSettings({ sugarLimit: num(e.target.value) })} />
+            </label>
+            <label className="field">Sodium limit (mg)
+              <input className="input num" type="number" value={settings.sodiumLimit} onChange={(e) => actions.updateSettings({ sodiumLimit: num(e.target.value) })} />
+            </label>
+          </div>
+          <div className="tiny muted">Leave carbs / fat empty to use 45% / 28% of your calorie goal. Common targets: fiber 25–38 g, sugar under 50 g, sodium under 2,300 mg.</div>
           <div className="tiny muted">
             Daily deficit at this goal: <b style={{ color: 'var(--text)' }}>{settings.maintenance - settings.dailyGoal} kcal</b> ≈ {(((settings.maintenance - settings.dailyGoal) * 7) / 7700).toFixed(2)} kg fat / week.
             Weekly goals default to daily goal × 7 and can be changed per week on the Week tab.
@@ -121,10 +141,10 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
               id: 'custom:' + Date.now().toString(36),
               name: cf.name.trim(),
               aliases: [cf.name.trim().toLowerCase()],
-              kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f),
+              kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib), sug: num(cf.sug), na: num(cf.na),
               units: cf.serving ? { serving: num(cf.serving), piece: num(cf.serving) } : undefined,
             })
-            setCf({ name: '', kcal: '', p: '', c: '', f: '', serving: '' })
+            setCf(EMPTY_CF)
             toast('Food saved — you can now say it by name')
           }}>
             <input className="input" placeholder="Name, e.g. Mom's chicken curry" value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} />
@@ -133,6 +153,9 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
               <input className="input num" placeholder="Protein" type="number" value={cf.p} onChange={(e) => setCf({ ...cf, p: e.target.value })} />
               <input className="input num" placeholder="Carbs" type="number" value={cf.c} onChange={(e) => setCf({ ...cf, c: e.target.value })} />
               <input className="input num" placeholder="Fat" type="number" value={cf.f} onChange={(e) => setCf({ ...cf, f: e.target.value })} />
+              <input className="input num" placeholder="Fiber" type="number" value={cf.fib} onChange={(e) => setCf({ ...cf, fib: e.target.value })} />
+              <input className="input num" placeholder="Sugar" type="number" value={cf.sug} onChange={(e) => setCf({ ...cf, sug: e.target.value })} />
+              <input className="input num" placeholder="Sodium mg" type="number" value={cf.na} onChange={(e) => setCf({ ...cf, na: e.target.value })} />
             </div>
             <div className="row">
               <input className="input num" placeholder="Serving size in g (optional)" type="number" value={cf.serving} onChange={(e) => setCf({ ...cf, serving: e.target.value })} />
@@ -142,7 +165,7 @@ export function Settings({ toast }: { toast: (m: string) => void }) {
           </form>
           {customFoods.map((f) => (
             <div key={f.id} className="entry">
-              <div className="grow"><div className="name">{f.name}</div><div className="meta">{f.kcal} kcal · P{f.p} C{f.c} F{f.f} per 100 g</div></div>
+              <div className="grow"><div className="name">{f.name}</div><div className="meta">{f.kcal} kcal · P{f.p} C{f.c} F{f.f} Fiber {f.fib ?? 0} per 100 g</div></div>
               <button className="btn btn-ghost icon-btn btn-danger" onClick={() => actions.removeCustomFood(f.id)} aria-label="Delete"><Icon name="trash" size={15} /></button>
             </div>
           ))}

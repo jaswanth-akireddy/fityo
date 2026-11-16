@@ -10,6 +10,9 @@ export interface Food {
   p: number
   c: number
   f: number
+  fib: number // fiber, g
+  sug: number // sugar, g
+  na: number // sodium, mg
   units?: Record<string, number>
 }
 
@@ -161,6 +164,137 @@ const rows: Row[] = [
   ['Honey', 'honey', 304, 0.3, 82, 0, { tsp: 7, tbsp: 21 }],
 ]
 
+
+// Fiber (g) | sugar (g) | sodium (mg) per 100 g. Prepared dishes assume normal home salt.
+const EXTRA = `
+Chicken breast (cooked)|0|0|74
+Chicken thigh (cooked)|0|0|95
+Chicken curry|1|1.5|400
+Butter chicken|1|3|450
+Chicken tikka|0.5|1|500
+Chicken biryani|1|1|400
+Mutton curry|1|1.5|400
+Fish (cooked)|0|0|80
+Fish curry|1|1.5|400
+Salmon (cooked)|0|0|61
+Tuna (canned in water)|0|0|247
+Prawns (cooked)|0|0|220
+Egg (whole, boiled)|0|1.1|124
+Egg white|0|0.7|166
+Omelette|0|1|300
+Scrambled eggs|0|1.5|300
+Paneer|0|2.6|20
+Paneer butter masala|1.5|4|450
+Palak paneer|2.5|2|400
+Tofu (firm)|2.3|0.6|14
+Soya chunks (cooked)|4|2|10
+Whey protein|0|6|250
+Beef (lean, cooked)|0|0|65
+Pork (cooked)|0|0|60
+Dal (cooked, toor/moong)|2.5|1|250
+Dal makhani|4|1.5|350
+Chana masala|6|2|350
+Rajma|5.5|1.5|350
+Chickpeas (boiled)|7.6|4.8|7
+Sambar|2.5|2|350
+Rasam|0.7|1.5|400
+Sprouts (moong)|1.8|4|6
+White rice (cooked)|0.4|0.1|1
+Brown rice (cooked)|1.8|0.4|5
+Jeera rice|0.6|0.2|250
+Curd rice|0.4|2|250
+Lemon rice|1|0.5|300
+Pulao / veg fried rice|1.2|1|350
+Khichdi|2|0.5|250
+Roti / chapati|5|1.5|300
+Paratha (plain)|4|1.5|400
+Aloo paratha|3.5|1.5|400
+Naan|2.2|3.5|450
+Poori|3|1|300
+Idli|1.5|0.5|250
+Dosa (plain)|1.5|0.5|300
+Masala dosa|2|1.5|350
+Upma|1.5|1|350
+Poha|1.5|1|300
+Oats (cooked with water)|1.7|0.3|4
+Oats (dry)|10.6|1|2
+Bread (white)|2.7|5|490
+Bread (whole wheat)|6|6|450
+Pasta (cooked)|1.8|0.6|1
+Noodles (cooked)|1.5|1|600
+Quinoa (cooked)|2.8|0.9|7
+Potato (boiled)|1.8|0.9|4
+Sweet potato (boiled)|2.5|5.7|27
+Corn (boiled)|2.4|4.5|1
+Mixed veg curry|3|3|350
+Aloo sabzi|2.5|2|350
+Bhindi fry|3.5|1.5|300
+Salad (mixed greens)|2|2|20
+Broccoli|2.6|1.7|33
+Spinach (cooked)|2.4|0.4|70
+Cucumber|0.5|1.7|2
+Tomato|1.2|2.6|5
+Carrot|2.8|4.7|69
+Onion|1.7|4.2|4
+Mushrooms (cooked)|2.2|2.3|2
+Milk (toned / 3% fat)|0|4.8|45
+Milk (full cream)|0|5|43
+Skimmed milk|0|5|42
+Curd / dahi|0|4.7|46
+Greek yogurt|0|3.2|36
+Buttermilk|0|4.8|120
+Lassi (sweet)|0|14|40
+Cheese (cheddar)|0|0.5|650
+Butter|0|0.1|640
+Ghee|0|0|2
+Banana|2.6|12|1
+Apple|2.4|10|1
+Orange|2.4|9|0
+Mango|1.6|14|1
+Papaya|1.7|8|8
+Watermelon|0.4|6.2|1
+Grapes|0.9|15.5|2
+Pomegranate|4|13.7|3
+Guava|5.4|8.9|2
+Dates|8|63|2
+Almonds|12.5|4.4|1
+Peanuts (roasted)|8.5|4.2|6
+Peanut butter|6|9|430
+Cashews|3.3|6|12
+Walnuts|6.7|2.6|2
+Chia seeds|34|0|16
+Olive oil|0|0|2
+Cooking oil|0|0|0
+Samosa|3|2|450
+Pakora / bhaji|3.5|2|500
+Vada|4|1|450
+Pani puri|3|4|500
+Pav bhaji|3|4|500
+Biscuits|2|25|400
+Potato chips|4.4|0.3|525
+Dark chocolate|7|48|20
+Gulab jamun|0.5|40|40
+Rasgulla|0|38|15
+Kheer|0.3|15|50
+Ice cream|0.7|21|80
+Pizza|2.3|3.6|600
+Burger|1.5|5|500
+French fries|3.8|0.3|210
+Sandwich (veg)|3|3|450
+Tea with milk & sugar|0|6.5|15
+Coffee with milk & sugar|0|6.5|20
+Black coffee|0|0|2
+Orange juice|0.2|8.4|1
+Coconut water|1.1|2.6|105
+Soft drink / cola|0|10.6|4
+Beer|0|0|4
+Sugar|0|100|1
+Honey|0.2|82|4
+`
+const extras = new Map(
+  EXTRA.trim().split('\n').map((l) => { const [n, fib, sug, na] = l.split('|'); return [n, { fib: +fib, sug: +sug, na: +na }] }),
+)
+
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
 export const FOODS: Food[] = rows.map(([name, aliases, kcal, p, c, f, units]) => ({
@@ -171,5 +305,8 @@ export const FOODS: Food[] = rows.map(([name, aliases, kcal, p, c, f, units]) =>
   p,
   c,
   f,
+  ...(extras.get(name) ?? { fib: 0, sug: 0, na: 0 }),
   units,
 }))
+
+export const FOOD_BY_ID = new Map(FOODS.map((f) => [f.id, f]))

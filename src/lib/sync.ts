@@ -49,6 +49,7 @@ onLocalChange((c) => {
   saveQueue()
   scheduleFlush()
 })
+actions.flushBackfill()
 
 let session: Session | null = null
 let flushTimer: number | undefined
@@ -59,14 +60,17 @@ function scheduleFlush(delay = 700) {
 }
 
 // ── Row mapping ──────────────────────────────────────────────────────────
-interface EntryRow { id: string; user_id: string; date: string; meal: Entry['meal']; food_id: string; name: string; grams: number; kcal: number; p: number; c: number; f: number; per100: Entry['per100']; created_at: number }
+interface EntryRow { id: string; user_id: string; date: string; meal: Entry['meal']; food_id: string; name: string; grams: number; kcal: number; p: number; c: number; f: number; fib: number; sug: number; na: number; per100: Entry['per100']; created_at: number }
 const toRow = (e: Entry, uid: string): EntryRow => ({
   id: e.id, user_id: uid, date: e.date, meal: e.meal, food_id: e.foodId, name: e.name, grams: e.grams,
-  kcal: e.kcal, p: e.p, c: e.c, f: e.f, per100: e.per100, created_at: e.createdAt,
+  kcal: e.kcal, p: e.p, c: e.c, f: e.f, fib: e.fib ?? 0, sug: e.sug ?? 0, na: e.na ?? 0, per100: e.per100, created_at: e.createdAt,
 })
 const fromRow = (r: EntryRow): Entry => ({
   id: r.id, date: r.date, meal: r.meal, foodId: r.food_id, name: r.name, grams: Number(r.grams),
-  kcal: Math.round(Number(r.kcal)), p: Number(r.p), c: Number(r.c), f: Number(r.f), per100: r.per100, createdAt: Number(r.created_at),
+  kcal: Math.round(Number(r.kcal)), p: Number(r.p), c: Number(r.c), f: Number(r.f),
+  // Rows written before fiber was tracked have no fib in per100: leave undefined so the store backfills them.
+  ...(r.per100?.fib != null ? { fib: Number(r.fib), sug: Number(r.sug), na: Math.round(Number(r.na)) } : {}),
+  per100: r.per100, createdAt: Number(r.created_at),
 })
 
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n))

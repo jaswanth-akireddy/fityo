@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { Food } from '../lib/foods'
-import { allFoods, bestMatch, searchUSDA } from '../lib/nutrition'
+import { allFoods, bestMatch, macrosFor, searchUSDA } from '../lib/nutrition'
 import { describeAmount, detectMeal, parseFoodText } from '../lib/parser'
 import { speechSupported, useSpeech } from '../lib/speech'
-import { actions, addDays, fromISO, MEALS, sumEntries, today, useStore, type Entry, type Meal } from '../lib/store'
+import { actions, addDays, fromISO, goalsOf, MEALS, sumEntries, today, useStore, type Entry, type Meal, type Totals } from '../lib/store'
 import { FoodPicker } from './FoodPicker'
 import { Icon } from './Icon'
 import { ReviewSheet, type Draft } from './ReviewSheet'
@@ -87,6 +87,7 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
   }
 
   const goal = settings.dailyGoal
+  const goals = goalsOf(settings)
   const left = goal - totals.kcal
 
   return (
@@ -109,10 +110,17 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
             <div style={{ textAlign: 'right' }}><div className="muted tiny">{settings.maintenance >= totals.kcal ? 'Deficit' : 'Surplus'}</div><b className="num" style={{ fontSize: 18, color: settings.maintenance >= totals.kcal ? 'var(--green)' : 'var(--red)' }}>{Math.abs(settings.maintenance - totals.kcal)}</b></div>
           </div>
           <div className="stack" style={{ gap: 12 }}>
-            <Macro label="Protein" value={totals.p} goal={settings.proteinGoal} color="var(--protein)" />
-            <Macro label="Carbs" value={totals.c} goal={Math.round((goal * 0.45) / 4)} color="var(--carbs)" />
-            <Macro label="Fat" value={totals.f} goal={Math.round((goal * 0.28) / 9)} color="var(--fat)" />
+            <Macro label="Protein" value={totals.p} goal={goals.p} color="var(--protein)" />
+            <Macro label="Carbs" value={totals.c} goal={goals.c} color="var(--carbs)" />
+            <Macro label="Fat" value={totals.f} goal={goals.f} color="var(--fat)" />
+            <Macro label="Fiber" value={totals.fib} goal={goals.fib} color="var(--fiber)" />
           </div>
+          <div className="sub-title">Keep under</div>
+          <div className="stack" style={{ gap: 12 }}>
+            <Macro label="Sugar" value={totals.sug} goal={goals.sug} color="var(--sugar)" limit />
+            <Macro label="Sodium" value={totals.na} goal={goals.na} unit="mg" color="var(--sodium)" limit />
+          </div>
+          <CalorieSplit t={totals} />
           {left < 0 && <div className="badge warn" style={{ marginTop: 14 }}>{-left} kcal over today’s goal</div>}
         </div>
       </div>
@@ -148,7 +156,7 @@ export function Today({ date, setDate, toast }: { date: string; setDate: (d: str
             <div className="row wrap" style={{ marginTop: 14, gap: 6 }}>
               <span className="tiny muted" style={{ marginRight: 2 }}>Recent</span>
               {recent.map((e) => {
-                const food: Food = { id: e.foodId, name: e.name, aliases: [], ...e.per100 }
+                const food: Food = { id: e.foodId, name: e.name, aliases: [], fib: 0, sug: 0, na: 0, ...e.per100 }
                 const pool = allFoods(customFoods).find((f) => f.id === e.foodId)
                 return (
                   <button key={e.id} className="chip" onClick={() => quickAdd(pool ?? food)}>
@@ -202,8 +210,7 @@ function EntryRow({ e }: { e: Entry }) {
   const [grams, setGrams] = useState(String(e.grams))
   const save = () => {
     const g = Math.max(0, +grams || 0)
-    const k = g / 100
-    actions.updateEntry(e.id, { grams: g, kcal: Math.round(e.per100.kcal * k), p: +(e.per100.p * k).toFixed(1), c: +(e.per100.c * k).toFixed(1), f: +(e.per100.f * k).toFixed(1) })
+    actions.updateEntry(e.id, { grams: g, ...macrosFor(e.per100, g) })
     setEditing(false)
   }
   return (
@@ -218,7 +225,7 @@ function EntryRow({ e }: { e: Entry }) {
             <button className="btn btn-sm btn-ghost" type="button" onClick={() => setEditing(false)}>Cancel</button>
           </form>
         ) : (
-          <div className="meta">{e.grams} g · P {Math.round(e.p)} · C {Math.round(e.c)} · F {Math.round(e.f)}</div>
+          <div className="meta">{e.grams} g · P {Math.round(e.p)} · C {Math.round(e.c)} · F {Math.round(e.f)} · Fiber {Math.round(e.fib ?? 0)}</div>
         )}
       </div>
       {!editing && (
@@ -263,11 +270,54 @@ function Ring({ value, goal }: { value: number; goal: number }) {
   )
 }
 
-function Macro({ label, value, goal, color }: { label: string; value: number; goal: number; color: string }) {
+function Macro({ label, value, goal, color, unit = 'g', limit }: { label: string; value: number; goal: number; color: string; unit?: string; limit?: boolean }) {
+  const pct = value / Math.max(goal, 1)
+  const over = limit && pct > 1
+  const hit = !limit && pct >= 1
   return (
     <div className="macro">
-      <div className="kv"><span style={{ color: 'var(--text-2)' }}>{label}</span><span><b className="num">{Math.round(value)}</b><span className="muted"> / {goal} g</span></span></div>
-      <div className="bar"><div style={{ width: `${Math.min(100, (value / Math.max(goal, 1)) * 100)}%`, background: color }} /></div>
+      <div className="kv">
+        <span style={{ color: 'var(--text-2)' }}>
+          {label}
+          {hit && <span className="badge good" style={{ marginLeft: 6 }}>✓ goal</span>}
+          {over && <span className="badge bad" style={{ marginLeft: 6 }}>over limit</span>}
+        </span>
+        <span><b className="num">{Math.round(value).toLocaleString()}</b><span className="muted"> / {goal.toLocaleString()} {unit}{limit ? ' max' : ''}</span></span>
+      </div>
+      <div className="bar"><div style={{ width: `${Math.min(100, pct * 100)}%`, background: over ? 'var(--red)' : color }} /></div>
     </div>
+  )
+}
+
+/** Share of calories from protein / carbs / fat (4 / 4 / 9 kcal per gram). */
+function CalorieSplit({ t }: { t: Totals }) {
+  const parts = [
+    { label: 'Protein', kcal: t.p * 4, color: 'var(--protein)' },
+    { label: 'Carbs', kcal: t.c * 4, color: 'var(--carbs)' },
+    { label: 'Fat', kcal: t.f * 9, color: 'var(--fat)' },
+  ]
+  const sum = parts.reduce((a, p) => a + p.kcal, 0)
+  return (
+    <>
+      <div className="sub-title">Calories from</div>
+      {sum === 0 ? (
+        <div className="tiny muted">Log food to see your protein / carbs / fat split.</div>
+      ) : (
+        <>
+          <div className="split-bar">
+            {parts.map((p) => p.kcal > 0 && <div key={p.label} title={`${p.label}: ${Math.round((p.kcal / sum) * 100)}%`} style={{ flex: p.kcal, background: p.color }} />)}
+          </div>
+          <div className="row between tiny" style={{ marginTop: 8 }}>
+            {parts.map((p) => (
+              <span key={p.label} className="row" style={{ gap: 6 }}>
+                <i className="dot" style={{ background: p.color }} />
+                <span className="muted">{p.label}</span>
+                <b className="num">{Math.round((p.kcal / sum) * 100)}%</b>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   )
 }

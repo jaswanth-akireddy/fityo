@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Food } from '../lib/foods'
-import { macrosFor } from '../lib/nutrition'
+import { macrosFor, per100Of } from '../lib/nutrition'
 import { resolveGrams, UNIT_OPTIONS } from '../lib/parser'
 import { actions, MEALS, type Meal } from '../lib/store'
 import { FoodPicker } from './FoodPicker'
@@ -47,7 +47,7 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
       ready.map((d) => {
         const grams = draftGrams(d)
         const m = macrosFor(d.food!, grams)
-        return { date, meal, foodId: d.food!.id, name: d.food!.name, grams, ...m, per100: { kcal: d.food!.kcal, p: d.food!.p, c: d.food!.c, f: d.food!.f } }
+        return { date, meal, foodId: d.food!.id, name: d.food!.name, grams, ...m, per100: per100Of(d.food!) }
       }),
     )
     onLogged(ready.length, total)
@@ -122,7 +122,7 @@ export function ReviewSheet({ drafts, setDrafts, meal, setMeal, date, transcript
                     </select>
                     <div className="right" style={{ minWidth: 92 }}>
                       <div className="num" style={{ fontSize: 20, fontWeight: 700 }}>{m!.kcal} <span className="tiny muted">kcal</span></div>
-                      <div className="tiny muted">{grams} g · P{Math.round(m!.p)} C{Math.round(m!.c)} F{Math.round(m!.f)}</div>
+                      <div className="tiny muted">{grams} g · P{Math.round(m!.p)} C{Math.round(m!.c)} F{Math.round(m!.f)} Fib{Math.round(m!.fib)}</div>
                     </div>
                   </div>
                 )}

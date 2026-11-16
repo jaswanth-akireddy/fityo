@@ -254,3 +254,15 @@ a { color: var(--cyan); }
 .avatar { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--grad); color: #07090d; flex: none; }
 .sync-pill { font-weight: 600; }
 @media (max-width: 420px) { .sync-label { display: none; } }
+
+/* ── Extra nutrients ── */
+:root { --fiber: #45e09a; --sugar: #c58cff; --sodium: #8fa3bf; }
+.sub-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 20px 0 10px; }
+.split-bar { display: flex; gap: 2px; height: 10px; border-radius: 99px; overflow: hidden; }
+.split-bar > div { min-width: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.nutri-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.bar.mini { height: 6px; border-radius: 99px; background: rgba(255,255,255,0.07); overflow: hidden; margin-top: 10px; }
+.bar.mini > div { height: 100%; border-radius: 99px; }
+.cell-good { color: var(--green) !important; }
+.cell-bad { color: var(--red) !important; }
